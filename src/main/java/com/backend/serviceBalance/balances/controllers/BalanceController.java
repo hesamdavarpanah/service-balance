@@ -30,15 +30,15 @@ public class BalanceController {
         this.balanceService = balanceService;
     }
 
-    @Operation(summary = "credit account", description = "credit an account balance using the provided information.", method = "POST", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Information required to charge an account balance", required = true, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = CreditRequest.class))), responses = {@ApiResponse(responseCode = "201", description = "Account charged successfully", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GeneralResponse.class), examples = @ExampleObject(name = "charged", value = """
+    @Operation(summary = "credit account", description = "credit an account balance using the provided information.", method = "POST", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Information required to charge an account balance", required = true, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = CreditRequest.class))), responses = {@ApiResponse(responseCode = "200", description = "Account charged successfully", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GeneralResponse.class), examples = @ExampleObject(name = "charged", value = """
             {
               "title": "Success",
               "explanation": "Account balance charged"
             }
             """)))})
     @PostMapping(value = "/credit/", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<ResponseEntity<GeneralResponse>> createAccount(@Valid @RequestBody CreditRequest request) {
-        return balanceService.credit(request.getAccountId(), request.getAmount(), request.getTransactionId()).thenReturn(ResponseEntity.status(HttpStatus.CREATED).body(GeneralResponse.builder().title("Success").explanation("Account balance charged").build()));
+    public Mono<ResponseEntity<GeneralResponse>> credit(@Valid @RequestBody CreditRequest request) {
+        return balanceService.credit(request.getAccountId(), request.getAmount(), request.getTransactionId()).thenReturn(ResponseEntity.status(HttpStatus.OK).body(GeneralResponse.builder().title("Success").explanation("Account balance charged").build()));
     }
 
 }

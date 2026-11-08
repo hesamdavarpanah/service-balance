@@ -4,15 +4,22 @@ import com.backend.serviceBalance.accounts.models.Account;
 import com.backend.serviceBalance.accounts.repositories.AccountRepository;
 import com.backend.serviceBalance.balances.exceptions.IdempotencyConflictException;
 import com.backend.serviceBalance.balances.validators.BalanceValidator;
+import com.backend.serviceBalance.configs.CreditRetryPolicy;
 import com.backend.serviceBalance.transactions.models.Transaction;
 import com.backend.serviceBalance.transactions.models.enums.TransactionMethod;
 import com.backend.serviceBalance.transactions.models.enums.TransactionStatus;
 import com.backend.serviceBalance.transactions.repositories.TransactionRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Mono;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
+import reactor.util.retry.Retry;
+
+import java.time.Duration;
 
 import java.time.LocalDateTime;
 import java.util.Objects;
@@ -26,12 +33,25 @@ public class BalanceServiceImpl implements BalanceService {
     private final R2dbcEntityTemplate entityTemplate;
     private final TransactionalOperator transactionalOperator;
     private final BalanceValidator balanceValidator;
+    private final CircuitBreaker creditCircuitBreaker;
+
+    @Value("${max-retry}")
+    private Long maxRetry;
+
+    @Value("${max-duration-timeout}")
+    private Long maxDurationTimeout;
 
     @Override
     public Mono<Void> credit(String accountId, Long amount, String transactionId) {
         return Mono.defer(() -> {
             balanceValidator.validateCredit(accountId, amount, transactionId);
 
+            return Mono.defer(() -> creditOnce(accountId, amount, transactionId)).timeout(Duration.ofSeconds(maxDurationTimeout)).retryWhen(Retry.backoff(maxRetry, Duration.ofMillis(200)).maxBackoff(Duration.ofSeconds(2)).jitter(0.5).filter(CreditRetryPolicy::isRetryable).onRetryExhaustedThrow((_, signal) -> signal.failure())).transformDeferred(CircuitBreakerOperator.of(creditCircuitBreaker));
+        });
+    }
+
+    private Mono<Void> creditOnce(String accountId, Long amount, String transactionId) {
+        return Mono.defer(() -> {
             Mono<Void> work = accountRepository.findByIdForUpdate(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found: " + accountId))).flatMap(account -> transactionRepository.findById(transactionId).switchIfEmpty(Mono.defer(() -> createPendingTransaction(accountId, amount, transactionId))).flatMap(transaction -> {
                 verifySameCredit(transaction, accountId, amount);
 
@@ -42,6 +62,7 @@ public class BalanceServiceImpl implements BalanceService {
                     case PENDING -> completeCredit(account, transaction);
 
                     case FAILED -> Mono.error(new IllegalStateException("Transaction has failed: " + transactionId));
+
                 };
             })).then();
 
