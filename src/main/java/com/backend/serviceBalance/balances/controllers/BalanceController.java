@@ -1,0 +1,44 @@
+package com.backend.serviceBalance.balances.controllers;
+
+import com.backend.serviceBalance.balances.payloads.requests.CreditRequest;
+import com.backend.serviceBalance.balances.services.BalanceService;
+import com.backend.serviceBalance.utils.GeneralResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
+
+@Tag(name = "Balance Management", description = "Balance management can credit, debit, transfer account balances")
+@RestController
+@RequestMapping("${base-url}/balances")
+public class BalanceController {
+
+    private final BalanceService balanceService;
+
+    public BalanceController(BalanceService balanceService) {
+        this.balanceService = balanceService;
+    }
+
+    @Operation(summary = "credit account", description = "credit an account balance using the provided information.", method = "POST", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Information required to charge an account balance", required = true, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = CreditRequest.class))), responses = {@ApiResponse(responseCode = "201", description = "Account charged successfully", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GeneralResponse.class), examples = @ExampleObject(name = "charged", value = """
+            {
+              "title": "Success",
+              "explanation": "Account balance charged"
+            }
+            """)))})
+    @PostMapping(value = "/credit/", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<ResponseEntity<GeneralResponse>> createAccount(@Valid @RequestBody CreditRequest request) {
+        return balanceService.credit(request.getAccountId(), request.getAmount(), request.getTransactionId()).thenReturn(ResponseEntity.status(HttpStatus.CREATED).body(GeneralResponse.builder().title("Success").explanation("Account balance charged").build()));
+    }
+
+}
