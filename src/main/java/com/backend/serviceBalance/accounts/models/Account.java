@@ -34,4 +34,8 @@ public class Account {
 
     private Long balance;
 
+    private String status;
+
+    private String Role;
+
 }
