@@ -1,5 +1,6 @@
 package com.backend.serviceBalance.configs;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -14,7 +15,9 @@ import org.springframework.security.web.server.authentication.HttpStatusServerEn
 public class SecurityConfig {
 
     @Bean
-    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http) {
-        return http.csrf(ServerHttpSecurity.CsrfSpec::disable).formLogin(ServerHttpSecurity.FormLoginSpec::disable).httpBasic(ServerHttpSecurity.HttpBasicSpec::disable).authorizeExchange(auth -> auth.pathMatchers(HttpMethod.POST, "/api/users/create-user/").permitAll().pathMatchers(HttpMethod.POST, "/api/users/login/").permitAll().pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll().anyExchange().authenticated()).exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(new HttpStatusServerEntryPoint(HttpStatus.UNAUTHORIZED))).build();
+    public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http, @Value("${base-url}") String baseUrl) {
+        String basePath = baseUrl.replaceAll("/+$", "");
+
+        return http.csrf(ServerHttpSecurity.CsrfSpec::disable).formLogin(ServerHttpSecurity.FormLoginSpec::disable).httpBasic(ServerHttpSecurity.HttpBasicSpec::disable).authorizeExchange(auth -> auth.pathMatchers(HttpMethod.POST, basePath + "/users/create-user/", basePath + "/users/login/").permitAll().pathMatchers(HttpMethod.POST, basePath + "/accounts/create-account/").permitAll().pathMatchers(HttpMethod.GET, basePath + "/accounts/retrieve-accounts/").permitAll().pathMatchers(HttpMethod.PUT, basePath + "/accounts/update-account/").permitAll().pathMatchers(HttpMethod.POST, basePath + "/transactions/create-transaction/").permitAll().pathMatchers(HttpMethod.GET, basePath + "/transactions/retrieve-transactions/").permitAll().pathMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs", "/v3/api-docs/**").permitAll().anyExchange().authenticated()).exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(new HttpStatusServerEntryPoint(HttpStatus.UNAUTHORIZED))).build();
     }
 }
