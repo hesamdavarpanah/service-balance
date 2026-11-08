@@ -1,4 +1,4 @@
-package com.backend.serviceBalance.users.payloads.requests;
+package com.backend.serviceBalance.accounts.payloads.requests;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
@@ -8,7 +8,7 @@ import lombok.Setter;
 @Builder
 @Getter
 @Setter
-public class CreateUserRequest {
+public class CreateAccountRequest {
 
     @Schema(example = "Hesam", description = "user firstname")
     private String firstname;

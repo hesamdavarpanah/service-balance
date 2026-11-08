@@ -1,6 +1,6 @@
 package com.backend.serviceBalance.utils;
 
-import com.backend.serviceBalance.users.exceptions.UserAlreadyExistsException;
+import com.backend.serviceBalance.accounts.exceptions.AccountAlreadyExistsException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -17,8 +17,8 @@ public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-    @ExceptionHandler(UserAlreadyExistsException.class)
-    public ResponseEntity<GeneralResponse> handleUserAlreadyExists(UserAlreadyExistsException exception) {
+    @ExceptionHandler(AccountAlreadyExistsException.class)
+    public ResponseEntity<GeneralResponse> handleUserAlreadyExists(AccountAlreadyExistsException exception) {
         return buildResponse(HttpStatus.CONFLICT, "Conflict", exception.getMessage());
     }
 

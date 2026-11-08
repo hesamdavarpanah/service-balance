@@ -1,4 +1,4 @@
-package com.backend.serviceBalance.users.models;
+package com.backend.serviceBalance.accounts.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.*;
@@ -11,8 +11,8 @@ import org.springframework.data.relational.core.mapping.Table;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table("users")
-public class User {
+@Table("accounts")
+public class Account {
 
     @Id
     private Long id;
