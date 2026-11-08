@@ -32,37 +32,54 @@ public class BalanceServiceImpl implements BalanceService {
         return Mono.defer(() -> {
             balanceValidator.validateCredit(accountId, amount, transactionId);
 
-            Mono<Void> work = accountRepository.findByIdForUpdate(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found: " + accountId))).flatMap(account -> transactionRepository.findById(transactionId).flatMap(existing -> {
-                verifySameCredit(existing, accountId, amount);
+            Mono<Void> work = accountRepository.findByIdForUpdate(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found: " + accountId))).flatMap(account -> transactionRepository.findById(transactionId).switchIfEmpty(Mono.defer(() -> createPendingTransaction(accountId, amount, transactionId))).flatMap(transaction -> {
+                verifySameCredit(transaction, accountId, amount);
 
-                return Mono.just(existing);
-            }).switchIfEmpty(Mono.defer(() -> applyCredit(account, amount, transactionId)))).then();
+                return switch (transaction.getTransactionStatus()) {
+
+                    case SUCCESS -> Mono.just(transaction);
+
+                    case PENDING -> completeCredit(account, transaction);
+
+                    case FAILED -> Mono.error(new IllegalStateException("Transaction has failed: " + transactionId));
+                };
+            })).then();
 
             return transactionalOperator.transactional(work);
         });
     }
 
-    private Mono<Transaction> applyCredit(Account account, Long amount, String transactionId) {
-        Long currentBalance = account.getBalance();
-
-        if (currentBalance == null || currentBalance < 0)
-            return Mono.error(new IllegalStateException("Account balance is invalid"));
-
-        final long newBalance;
-
-        try {
-            newBalance = Math.addExact(currentBalance, amount);
-        } catch (ArithmeticException exception) {
-            return Mono.error(new IllegalArgumentException("Balance exceeds the supported range", exception));
-        }
-
+    private Mono<Transaction> createPendingTransaction(String accountId, Long amount, String transactionId) {
         LocalDateTime now = LocalDateTime.now();
 
-        Transaction transaction = Transaction.builder().id(transactionId).createdAt(now).updatedAt(now).transactionMethod(TransactionMethod.CREDIT).amount(amount).accountId(account.getId()).transactionStatus(TransactionStatus.SUCCESS).build();
-        return entityTemplate.insert(transaction).flatMap(inserted -> {
+        Transaction transaction = Transaction.builder().id(transactionId).createdAt(now).updatedAt(now).transactionMethod(TransactionMethod.CREDIT).amount(amount).accountId(accountId).transactionStatus(TransactionStatus.PENDING).build();
+
+        return entityTemplate.insert(transaction);
+    }
+
+    private Mono<Transaction> completeCredit(Account account, Transaction transaction) {
+        return Mono.defer(() -> {
+            Long currentBalance = account.getBalance();
+
+            if (currentBalance == null || currentBalance < 0)
+                return Mono.error(new IllegalStateException("Account balance is invalid"));
+
+            final long newBalance;
+
+            try {
+                newBalance = Math.addExact(currentBalance, transaction.getAmount());
+            } catch (ArithmeticException exception) {
+                return Mono.error(new IllegalArgumentException("Balance exceeds the supported range", exception));
+            }
+
             account.setBalance(newBalance);
 
-            return accountRepository.save(account).thenReturn(inserted);
+            return accountRepository.save(account).flatMap(_ -> {
+                transaction.setTransactionStatus(TransactionStatus.SUCCESS);
+                transaction.setUpdatedAt(LocalDateTime.now());
+
+                return transactionRepository.save(transaction);
+            });
         });
     }
 
@@ -70,9 +87,6 @@ public class BalanceServiceImpl implements BalanceService {
         boolean sameRequest = existing.getTransactionMethod() == TransactionMethod.CREDIT && Objects.equals(existing.getAccountId(), accountId) && Objects.equals(existing.getAmount(), amount);
 
         if (!sameRequest) throw new IdempotencyConflictException(existing.getId());
-
-        if (existing.getTransactionStatus() != TransactionStatus.SUCCESS)
-            throw new IllegalStateException("Existing transaction is not successful: " + existing.getId());
     }
 
     @Override
