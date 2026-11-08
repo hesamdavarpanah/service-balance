@@ -9,7 +9,7 @@ import reactor.core.publisher.Mono;
 import com.backend.serviceBalance.transactions.models.Transaction;
 import org.springframework.data.repository.reactive.ReactiveCrudRepository;
 
-public interface TransactionRepository extends ReactiveCrudRepository<Transaction, Long> {
+public interface TransactionRepository extends ReactiveCrudRepository<Transaction, String> {
 
     @Modifying
     @Query("""
@@ -17,6 +17,6 @@ public interface TransactionRepository extends ReactiveCrudRepository<Transactio
             SET transaction_status = :status
             WHERE id = :id
             """)
-    Mono<Integer> updateTransactionStatus(@Param("id") Long id, @Param("status") TransactionStatus status);
+    Mono<Integer> updateTransactionStatus(@Param("id") String id, @Param("status") TransactionStatus status);
 
 }

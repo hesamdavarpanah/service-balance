@@ -58,7 +58,7 @@ public class AccountController {
             }
             """)))})
     @PutMapping(value = "/update-account/", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<ResponseEntity<GeneralResponse>> updateAccount(@Valid @RequestBody CreateOrUpdateAccountRequest request, @RequestParam Long accountId) {
+    public Mono<ResponseEntity<GeneralResponse>> updateAccount(@Valid @RequestBody CreateOrUpdateAccountRequest request, @RequestParam String accountId) {
         return accountService.updateAccount(accountId, request).thenReturn(ResponseEntity.status(HttpStatus.OK).body(GeneralResponse.builder().title("Success").explanation("User created successfully").build()));
     }
 }

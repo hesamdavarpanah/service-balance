@@ -20,7 +20,7 @@ import java.time.LocalDateTime;
 public class Transaction {
 
     @Id
-    private Long id;
+    private String id;
 
     @NotNull
     @Column("created_at")
@@ -40,7 +40,7 @@ public class Transaction {
 
     @NotNull
     @Column("account_id")
-    private Long accountId;
+    private String accountId;
 
     @NotNull
     @Column("transaction_status")

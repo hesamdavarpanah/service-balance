@@ -34,7 +34,7 @@ public class AccountService {
     }
 
 
-    public Mono<Void> updateAccount(Long accountId, CreateOrUpdateAccountRequest request) {
+    public Mono<Void> updateAccount(String accountId, CreateOrUpdateAccountRequest request) {
         return accountRepository.findById(accountId).switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Account not found"))).flatMap(account -> Mono.fromCallable(() -> {
             if (request.getFirstname() != null) account.setFirstname(request.getFirstname());
 

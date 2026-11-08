@@ -16,7 +16,7 @@ public class CreateTransactionRequest {
 
     private Long amount;
 
-    private Long accountId;
+    private String accountId;
 
     private TransactionStatus transactionStatus;
 

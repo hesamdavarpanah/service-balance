@@ -15,7 +15,7 @@ import org.springframework.data.relational.core.mapping.Table;
 public class Account {
 
     @Id
-    private Long id;
+    private String id;
 
     private String firstname;
 

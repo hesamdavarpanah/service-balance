@@ -46,9 +46,9 @@ public class TransactionService {
         return transactionRepository.findAll().map(transaction -> new TransactionResponse(transaction.getId(), transaction.getCreatedAt(), transaction.getUpdatedAt(), transaction.getTransactionMethod(), transaction.getAmount(), transaction.getAccountId(), transaction.getTransactionStatus()));
     }
 
-    public Mono<Void> updateTransactionStatus(Long transactionId, TransactionStatus status) {
+    public Mono<Void> updateTransactionStatus(String transactionId, TransactionStatus status) {
         return Mono.defer(() -> {
-            if (transactionId == null || transactionId <= 0 || status == null)
+            if (transactionId == null || status == null)
                 return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid transaction id or status"));
 
             return transactionRepository.updateTransactionStatus(transactionId, status).flatMap(updatedRows -> {
