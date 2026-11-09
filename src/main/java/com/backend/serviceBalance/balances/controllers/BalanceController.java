@@ -1,6 +1,6 @@
 package com.backend.serviceBalance.balances.controllers;
 
-import com.backend.serviceBalance.balances.payloads.requests.CreditRequest;
+import com.backend.serviceBalance.balances.payloads.requests.CreditAndDebitRequest;
 import com.backend.serviceBalance.balances.payloads.requests.GetBalanceRequest;
 import com.backend.serviceBalance.balances.services.BalanceService;
 import com.backend.serviceBalance.utils.GeneralResponse;
@@ -31,15 +31,26 @@ public class BalanceController {
         this.balanceService = balanceService;
     }
 
-    @Operation(summary = "credit account", description = "credit an account balance using the provided information.", method = "POST", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Information required to charge an account balance", required = true, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = CreditRequest.class))), responses = {@ApiResponse(responseCode = "200", description = "Account charged successfully", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GeneralResponse.class), examples = @ExampleObject(name = "charged", value = """
+    @Operation(summary = "credit account", description = "credit an account balance using the provided information.", method = "POST", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Information required to charge an account balance", required = true, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = CreditAndDebitRequest.class))), responses = {@ApiResponse(responseCode = "200", description = "Account charged successfully", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GeneralResponse.class), examples = @ExampleObject(name = "charged", value = """
             {
               "title": "Success",
               "explanation": "Account balance charged"
             }
             """)))})
     @PostMapping(value = "/credit/", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public Mono<ResponseEntity<GeneralResponse>> credit(@Valid @RequestBody CreditRequest request) {
+    public Mono<ResponseEntity<GeneralResponse>> credit(@Valid @RequestBody CreditAndDebitRequest request) {
         return balanceService.credit(request.getAccountId(), request.getAmount(), request.getTransactionId()).thenReturn(ResponseEntity.status(HttpStatus.OK).body(GeneralResponse.builder().title("Success").explanation("Account balance charged").build()));
+    }
+
+    @Operation(summary = "debit account", description = "debit an account balance using the provided information.", method = "POST", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Information required to decrease an account balance", required = true, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = CreditAndDebitRequest.class))), responses = {@ApiResponse(responseCode = "200", description = "Account decreased successfully", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GeneralResponse.class), examples = @ExampleObject(name = "decreased", value = """
+            {
+              "title": "Success",
+              "explanation": "Account balance decreased"
+            }
+            """)))})
+    @PostMapping(value = "/debit/", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<ResponseEntity<GeneralResponse>> debit(@Valid @RequestBody CreditAndDebitRequest request) {
+        return balanceService.debit(request.getAccountId(), request.getAmount(), request.getTransactionId()).thenReturn(ResponseEntity.status(HttpStatus.OK).body(GeneralResponse.builder().title("Success").explanation("Account balance decreased").build()));
     }
 
     @Operation(summary = "Account balance", description = "Retrieve an account balance by account ID.", method = "POST", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Account ID required to retrieve an account balance", required = true, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GetBalanceRequest.class))), responses = {@ApiResponse(responseCode = "200", description = "Account balance 10000", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GeneralResponse.class), examples = @ExampleObject(name = "Account Balance", value = """

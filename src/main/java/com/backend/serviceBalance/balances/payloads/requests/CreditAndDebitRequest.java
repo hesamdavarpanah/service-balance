@@ -8,7 +8,7 @@ import lombok.*;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreditRequest {
+public class CreditAndDebitRequest {
 
     @Schema(description = "account ID", example = "ACC-01")
     private String accountId;

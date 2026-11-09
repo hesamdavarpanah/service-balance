@@ -3,6 +3,7 @@ package com.backend.serviceBalance.balances.services;
 import com.backend.serviceBalance.accounts.models.Account;
 import com.backend.serviceBalance.accounts.repositories.AccountRepository;
 import com.backend.serviceBalance.balances.exceptions.IdempotencyConflictException;
+import com.backend.serviceBalance.balances.exceptions.InsufficientBalanceException;
 import com.backend.serviceBalance.balances.exceptions.TransactionAlreadyCompletedException;
 import com.backend.serviceBalance.balances.validators.BalanceValidator;
 import com.backend.serviceBalance.configs.CreditRetryPolicy;
@@ -58,9 +59,13 @@ public class BalanceServiceImpl implements BalanceService {
     }
 
     private Mono<Transaction> createPendingTransaction(String accountId, Long amount, String transactionId) {
+        return createPendingTransaction(accountId, amount, transactionId, TransactionMethod.CREDIT);
+    }
+
+    private Mono<Transaction> createPendingTransaction(String accountId, Long amount, String transactionId, TransactionMethod transactionMethod) {
         LocalDateTime now = LocalDateTime.now();
 
-        Transaction transaction = Transaction.builder().id(transactionId).createdAt(now).updatedAt(now).transactionMethod(TransactionMethod.CREDIT).amount(amount).accountId(accountId).transactionStatus(TransactionStatus.PENDING).build();
+        Transaction transaction = Transaction.builder().id(transactionId).createdAt(now).updatedAt(now).transactionMethod(transactionMethod).amount(amount).accountId(accountId).transactionStatus(TransactionStatus.PENDING).build();
 
         return entityTemplate.insert(transaction);
     }
@@ -108,7 +113,69 @@ public class BalanceServiceImpl implements BalanceService {
 
     @Override
     public Mono<Void> debit(String accountId, Long amount, String transactionId) {
-        return Mono.error(new UnsupportedOperationException("Debit is not implemented yet"));
+        return Mono.defer(() -> {
+            validateDebit(accountId, amount, transactionId);
+
+            return Mono.defer(() -> debitOnce(accountId, amount, transactionId)).timeout(Duration.ofSeconds(maxDurationTimeout)).retryWhen(Retry.backoff(maxRetry, Duration.ofMillis(200)).maxBackoff(Duration.ofSeconds(2)).jitter(0.5).filter(error -> !(error instanceof IdempotencyConflictException) && !(error instanceof TransactionAlreadyCompletedException) && !(error instanceof InsufficientBalanceException) && CreditRetryPolicy.isRetryable(error)).onRetryExhaustedThrow((_, signal) -> signal.failure())).transformDeferred(CircuitBreakerOperator.of(creditCircuitBreaker));
+        });
+    }
+
+    private void validateDebit(String accountId, Long amount, String transactionId) {
+
+        if (accountId == null || accountId.isBlank()) throw new IllegalArgumentException("Account ID is required");
+
+        if (transactionId == null || transactionId.isBlank())
+            throw new IllegalArgumentException("Transaction ID is required");
+
+        if (amount == null || amount <= 0) throw new IllegalArgumentException("Amount must be greater than zero");
+    }
+
+    private Mono<Void> debitOnce(String accountId, Long amount, String transactionId) {
+        return Mono.defer(() -> {
+            Mono<Void> work = accountRepository.findByIdForUpdate(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found: " + accountId))).flatMap(account -> transactionRepository.findByIdForUpdate(transactionId).switchIfEmpty(Mono.defer(() -> createPendingTransaction(accountId, amount, transactionId, TransactionMethod.DEBIT))).flatMap(transaction -> processDebitTransaction(account, transaction, accountId, amount, transactionId))).then();
+
+            return transactionalOperator.transactional(work);
+        });
+    }
+
+    private Mono<Void> processDebitTransaction(Account account, Transaction transaction, String accountId, Long amount, String transactionId) {
+        boolean sameOperation = java.util.Objects.equals(transaction.getAccountId(), accountId) && java.util.Objects.equals(transaction.getAmount(), amount) && transaction.getTransactionMethod() == TransactionMethod.DEBIT;
+
+        if (!sameOperation) return Mono.error(new IdempotencyConflictException(transactionId));
+
+        TransactionStatus status = transaction.getTransactionStatus();
+
+        if (status == TransactionStatus.SUCCESS)
+            return Mono.error(new TransactionAlreadyCompletedException(transactionId));
+
+        if (status == TransactionStatus.PENDING) return completeDebit(account, transaction).then();
+
+        return Mono.error(new IllegalStateException("Transaction cannot be debited in status " + status + ": " + transactionId));
+    }
+
+    private Mono<Transaction> completeDebit(Account account, Transaction transaction) {
+        return Mono.defer(() -> {
+            Long currentBalance = account.getBalance();
+            Long amount = transaction.getAmount();
+
+            if (currentBalance == null || currentBalance < 0)
+                return Mono.error(new IllegalStateException("Account balance is invalid"));
+
+            if (amount == null || amount <= 0)
+                return Mono.error(new IllegalArgumentException("Amount must be greater than zero"));
+
+            if (amount > currentBalance)
+                return Mono.error(new InsufficientBalanceException(account.getId(), currentBalance, amount));
+
+            account.setBalance(currentBalance - amount);
+
+            return accountRepository.save(account).flatMap(_ -> {
+                transaction.setTransactionStatus(TransactionStatus.SUCCESS);
+                transaction.setUpdatedAt(LocalDateTime.now());
+
+                return transactionRepository.save(transaction);
+            });
+        });
     }
 
     @Override
