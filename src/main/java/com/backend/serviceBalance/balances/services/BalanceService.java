@@ -11,4 +11,5 @@ public interface BalanceService {
     Mono<Void> transfer(String sourceAccountId, String destinationAccountId, Long amount, String transactionId);
 
     Mono<Long> getBalance(String accountId);
+
 }

@@ -103,6 +103,6 @@ public class BalanceServiceImpl implements BalanceService {
 
     @Override
     public Mono<Long> getBalance(String accountId) {
-        return accountRepository.findById(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found: " + accountId))).map(Account::getBalance);
+        return accountRepository.findBalanceByAccountId(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found or balance is null: " + accountId)));
     }
 }

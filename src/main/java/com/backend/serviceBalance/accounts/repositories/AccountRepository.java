@@ -8,7 +8,6 @@ import reactor.core.publisher.Mono;
 
 public interface AccountRepository extends ReactiveCrudRepository<Account, String> {
 
-
     @Query("""
             SELECT *
             FROM accounts
@@ -16,5 +15,12 @@ public interface AccountRepository extends ReactiveCrudRepository<Account, Strin
             FOR UPDATE
             """)
     Mono<Account> findByIdForUpdate(@Param("accountId") String accountId);
+
+    @Query("""
+        SELECT balance
+        FROM accounts
+        WHERE id = :accountId
+        """)
+    Mono<Long> findBalanceByAccountId(@Param("accountId") String accountId);
 
 }
