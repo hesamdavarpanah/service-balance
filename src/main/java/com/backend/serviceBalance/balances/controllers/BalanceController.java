@@ -62,7 +62,7 @@ public class BalanceController {
             """)))})
     @PostMapping(value = "/transfer/", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
     public Mono<ResponseEntity<GeneralResponse>> transfer(@Valid @RequestBody TransferRequest request) {
-        return balanceService.transfer(request.getSourceAccountId(), request.getDestinationAccountId(), request.getAmount(), request.getTransactionId()).thenReturn(ResponseEntity.status(HttpStatus.OK).body(GeneralResponse.builder().title("Success").explanation("Account balance decreased").build()));
+        return balanceService.transfer(request.getSourceAccountId(), request.getDestinationAccountId(), request.getAmount(), request.getTransactionId()).thenReturn(ResponseEntity.status(HttpStatus.OK).body(GeneralResponse.builder().title("Success").explanation("Account balance transferred").build()));
     }
 
     @Operation(summary = "Account balance", description = "Retrieve an account balance by account ID.", method = "POST", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Account ID required to retrieve an account balance", required = true, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GetBalanceRequest.class))), responses = {@ApiResponse(responseCode = "200", description = "Account balance 10000", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GeneralResponse.class), examples = @ExampleObject(name = "Account Balance", value = """

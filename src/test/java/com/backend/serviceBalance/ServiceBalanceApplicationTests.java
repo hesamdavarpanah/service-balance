@@ -330,17 +330,17 @@ class ServiceBalanceApplicationTests {
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
 
+        List<Map<String, Object>> requests = List.of(firstRequest, secondRequest);
+
         List<Future<TransferTestResult>> futures = new ArrayList<>();
 
         try {
-            for (Map<String, Object> request : List.of(firstRequest, secondRequest)) {
-
+            for (Map<String, Object> request : requests) {
                 futures.add(executor.submit(() -> {
                     ready.countDown();
 
-                    if (!start.await(10, TimeUnit.SECONDS)) {
+                    if (!start.await(10, TimeUnit.SECONDS))
                         throw new IllegalStateException("Timed out waiting for concurrent start");
-                    }
 
                     var response = client.post().uri(transferTestBasePath() + "/balances/transfer/").contentType(MediaType.APPLICATION_JSON).accept(MediaType.APPLICATION_JSON).bodyValue(request).exchange().expectBody(String.class).returnResult();
 
@@ -354,9 +354,21 @@ class ServiceBalanceApplicationTests {
 
             List<TransferTestResult> results = new ArrayList<>();
 
-            for (Future<TransferTestResult> future : futures) {
-                results.add(future.get(90, TimeUnit.SECONDS));
+            for (int i = 0; i < futures.size(); i++) {
+                TransferTestResult result = futures.get(i).get(90, TimeUnit.SECONDS);
+
+                results.add(result);
+
+                Map<String, Object> request = requests.get(i);
+
+                System.out.printf("Transfer #%d -> Transaction=%s | Source=%s | " + "Destination=%s | Amount=%s | Status=%d | Body=%s%n", i + 1, request.get("transactionId"), request.get("sourceAccountId"), request.get("destinationAccountId"), request.get("amount"), result.status(), result.body());
             }
+
+            long successCount = results.stream().filter(result -> result.status() == 200).count();
+
+            long conflictCount = results.stream().filter(result -> result.status() == 409).count();
+
+            System.out.printf("Transfer summary -> Total=%d | Success=%d | Conflict=%d | Other=%d%n", results.size(), successCount, conflictCount, results.size() - successCount - conflictCount);
 
             return results;
         } finally {
