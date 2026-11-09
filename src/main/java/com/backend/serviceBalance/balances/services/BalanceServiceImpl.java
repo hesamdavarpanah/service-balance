@@ -3,6 +3,7 @@ package com.backend.serviceBalance.balances.services;
 import com.backend.serviceBalance.accounts.models.Account;
 import com.backend.serviceBalance.accounts.repositories.AccountRepository;
 import com.backend.serviceBalance.balances.exceptions.IdempotencyConflictException;
+import com.backend.serviceBalance.balances.exceptions.TransactionAlreadyCompletedException;
 import com.backend.serviceBalance.balances.validators.BalanceValidator;
 import com.backend.serviceBalance.configs.CreditRetryPolicy;
 import com.backend.serviceBalance.transactions.models.Transaction;
@@ -13,7 +14,6 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
@@ -45,15 +45,15 @@ public class BalanceServiceImpl implements BalanceService {
         return Mono.defer(() -> {
             balanceValidator.validateCredit(accountId, amount, transactionId);
 
-            return Mono.defer(() -> creditOnce(accountId, amount, transactionId)).timeout(Duration.ofSeconds(maxDurationTimeout)).retryWhen(Retry.backoff(maxRetry, Duration.ofMillis(200)).maxBackoff(Duration.ofSeconds(2)).jitter(0.5).filter(error -> !(error instanceof IdempotencyConflictException) && CreditRetryPolicy.isRetryable(error)).onRetryExhaustedThrow((_, signal) -> signal.failure())).transformDeferred(CircuitBreakerOperator.of(creditCircuitBreaker));
+            return Mono.defer(() -> creditOnce(accountId, amount, transactionId)).timeout(Duration.ofSeconds(maxDurationTimeout)).retryWhen(Retry.backoff(maxRetry, Duration.ofMillis(200)).maxBackoff(Duration.ofSeconds(2)).jitter(0.5).filter(error -> !(error instanceof IdempotencyConflictException) && !(error instanceof TransactionAlreadyCompletedException) && CreditRetryPolicy.isRetryable(error)).onRetryExhaustedThrow((_, signal) -> signal.failure())).transformDeferred(CircuitBreakerOperator.of(creditCircuitBreaker));
         });
     }
 
     private Mono<Void> creditOnce(String accountId, Long amount, String transactionId) {
         return Mono.defer(() -> {
-            Mono<Void> work = accountRepository.findByIdForUpdate(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found: " + accountId))).flatMap(account -> createPendingTransaction(accountId, amount, transactionId).flatMap(transaction -> completeCredit(account, transaction))).then();
+            Mono<Void> work = accountRepository.findByIdForUpdate(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found: " + accountId))).flatMap(account -> transactionRepository.findByIdForUpdate(transactionId).switchIfEmpty(Mono.defer(() -> createPendingTransaction(accountId, amount, transactionId))).flatMap(transaction -> processCreditTransaction(account, transaction, accountId, amount, transactionId))).then();
 
-            return transactionalOperator.transactional(work).onErrorMap(DuplicateKeyException.class, _ -> new IdempotencyConflictException(transactionId));
+            return transactionalOperator.transactional(work);
         });
     }
 
@@ -63,6 +63,21 @@ public class BalanceServiceImpl implements BalanceService {
         Transaction transaction = Transaction.builder().id(transactionId).createdAt(now).updatedAt(now).transactionMethod(TransactionMethod.CREDIT).amount(amount).accountId(accountId).transactionStatus(TransactionStatus.PENDING).build();
 
         return entityTemplate.insert(transaction);
+    }
+
+    private Mono<Void> processCreditTransaction(Account account, Transaction transaction, String accountId, Long amount, String transactionId) {
+        boolean sameOperation = java.util.Objects.equals(transaction.getAccountId(), accountId) && java.util.Objects.equals(transaction.getAmount(), amount) && transaction.getTransactionMethod() == TransactionMethod.CREDIT;
+
+        if (!sameOperation) return Mono.error(new IdempotencyConflictException(transactionId));
+
+        TransactionStatus status = transaction.getTransactionStatus();
+
+        if (status == TransactionStatus.SUCCESS)
+            return Mono.error(new TransactionAlreadyCompletedException(transactionId));
+
+        if (status == TransactionStatus.PENDING) return completeCredit(account, transaction).then();
+
+        return Mono.error(new IllegalStateException("Transaction cannot be credited in status " + status + ": " + transactionId));
     }
 
     private Mono<Transaction> completeCredit(Account account, Transaction transaction) {

@@ -1,6 +1,8 @@
 package com.backend.serviceBalance.utils;
 
 import com.backend.serviceBalance.accounts.exceptions.AccountAlreadyExistsException;
+import com.backend.serviceBalance.balances.exceptions.IdempotencyConflictException;
+import com.backend.serviceBalance.balances.exceptions.TransactionAlreadyCompletedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -10,6 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.bind.support.WebExchangeBindException;
 import org.springframework.web.server.ServerWebInputException;
 
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -41,7 +44,17 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Internal Server Error", "error, try again!");
     }
 
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ResponseEntity<Map<String, String>> handleIdempotencyConflict(IdempotencyConflictException exception) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("title", "Idempotency Conflict", "explanation", exception.getMessage()));
+    }
+
     private ResponseEntity<GeneralResponse> buildResponse(HttpStatus status, String title, String explanation) {
         return ResponseEntity.status(status).body(GeneralResponse.builder().title(title).explanation(explanation).build());
+    }
+
+    @ExceptionHandler(TransactionAlreadyCompletedException.class)
+    public ResponseEntity<GeneralResponse> handleTransactionAlreadyCompleted(TransactionAlreadyCompletedException exception) {
+        return buildResponse(HttpStatus.CONFLICT, "Transaction Already Completed", exception.getMessage());
     }
 }

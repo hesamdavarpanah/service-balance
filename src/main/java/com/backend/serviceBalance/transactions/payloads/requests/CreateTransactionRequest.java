@@ -1,7 +1,6 @@
 package com.backend.serviceBalance.transactions.payloads.requests;
 
 import com.backend.serviceBalance.transactions.models.enums.TransactionMethod;
-import com.backend.serviceBalance.transactions.models.enums.TransactionStatus;
 import lombok.*;
 
 
@@ -17,7 +16,5 @@ public class CreateTransactionRequest {
     private Long amount;
 
     private String accountId;
-
-    private TransactionStatus transactionStatus;
 
 }

@@ -27,7 +27,7 @@ public class TransactionService {
 
     public Mono<Transaction> createTransaction(CreateTransactionRequest request) {
         return Mono.defer(() -> {
-            if (request == null || request.getAccountId() == null || request.getTransactionMethod() == null || request.getTransactionStatus() == null || request.getAmount() == null || request.getAmount() <= 0) {
+            if (request == null || request.getAccountId() == null || request.getTransactionMethod() == null || request.getAmount() == null || request.getAmount() <= 0) {
 
                 return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid transaction parameters, amount must be greater than 0"));
             }
@@ -35,7 +35,7 @@ public class TransactionService {
             return accountRepository.findById(request.getAccountId()).switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "account not found"))).flatMap(account -> {
                 LocalDateTime now = LocalDateTime.now();
 
-                Transaction transaction = Transaction.builder().transactionMethod(request.getTransactionMethod()).amount(request.getAmount()).accountId(account.getId()).transactionStatus(request.getTransactionStatus()).createdAt(now).updatedAt(now).build();
+                Transaction transaction = Transaction.builder().transactionMethod(request.getTransactionMethod()).amount(request.getAmount()).accountId(account.getId()).transactionStatus(TransactionStatus.PENDING).createdAt(now).updatedAt(now).build();
 
                 return transactionRepository.save(transaction);
             });

@@ -19,4 +19,14 @@ public interface TransactionRepository extends ReactiveCrudRepository<Transactio
             """)
     Mono<Integer> updateTransactionStatus(@Param("id") String id, @Param("status") TransactionStatus status);
 
+    @Query("""
+        SELECT *
+        FROM transactions
+        WHERE id = :transactionId
+        FOR UPDATE
+        """)
+    Mono<Transaction> findByIdForUpdate(
+            @Param("transactionId") String transactionId
+    );
+
 }
