@@ -9,20 +9,19 @@ import com.backend.serviceBalance.transactions.models.Transaction;
 import com.backend.serviceBalance.transactions.models.enums.TransactionMethod;
 import com.backend.serviceBalance.transactions.models.enums.TransactionStatus;
 import com.backend.serviceBalance.transactions.repositories.TransactionRepository;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.data.r2dbc.core.R2dbcEntityTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.reactive.TransactionalOperator;
 import reactor.core.publisher.Mono;
-import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
-
 import java.time.LocalDateTime;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -46,27 +45,15 @@ public class BalanceServiceImpl implements BalanceService {
         return Mono.defer(() -> {
             balanceValidator.validateCredit(accountId, amount, transactionId);
 
-            return Mono.defer(() -> creditOnce(accountId, amount, transactionId)).timeout(Duration.ofSeconds(maxDurationTimeout)).retryWhen(Retry.backoff(maxRetry, Duration.ofMillis(200)).maxBackoff(Duration.ofSeconds(2)).jitter(0.5).filter(CreditRetryPolicy::isRetryable).onRetryExhaustedThrow((_, signal) -> signal.failure())).transformDeferred(CircuitBreakerOperator.of(creditCircuitBreaker));
+            return Mono.defer(() -> creditOnce(accountId, amount, transactionId)).timeout(Duration.ofSeconds(maxDurationTimeout)).retryWhen(Retry.backoff(maxRetry, Duration.ofMillis(200)).maxBackoff(Duration.ofSeconds(2)).jitter(0.5).filter(error -> !(error instanceof IdempotencyConflictException) && CreditRetryPolicy.isRetryable(error)).onRetryExhaustedThrow((_, signal) -> signal.failure())).transformDeferred(CircuitBreakerOperator.of(creditCircuitBreaker));
         });
     }
 
     private Mono<Void> creditOnce(String accountId, Long amount, String transactionId) {
         return Mono.defer(() -> {
-            Mono<Void> work = accountRepository.findByIdForUpdate(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found: " + accountId))).flatMap(account -> transactionRepository.findById(transactionId).switchIfEmpty(Mono.defer(() -> createPendingTransaction(accountId, amount, transactionId))).flatMap(transaction -> {
-                verifySameCredit(transaction, accountId, amount);
+            Mono<Void> work = accountRepository.findByIdForUpdate(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException("Account not found: " + accountId))).flatMap(account -> createPendingTransaction(accountId, amount, transactionId).flatMap(transaction -> completeCredit(account, transaction))).then();
 
-                return switch (transaction.getTransactionStatus()) {
-
-                    case SUCCESS -> Mono.just(transaction);
-
-                    case PENDING -> completeCredit(account, transaction);
-
-                    case FAILED -> Mono.error(new IllegalStateException("Transaction has failed: " + transactionId));
-
-                };
-            })).then();
-
-            return transactionalOperator.transactional(work);
+            return transactionalOperator.transactional(work).onErrorMap(DuplicateKeyException.class, _ -> new IdempotencyConflictException(transactionId));
         });
     }
 
@@ -102,12 +89,6 @@ public class BalanceServiceImpl implements BalanceService {
                 return transactionRepository.save(transaction);
             });
         });
-    }
-
-    private void verifySameCredit(Transaction existing, String accountId, Long amount) {
-        boolean sameRequest = existing.getTransactionMethod() == TransactionMethod.CREDIT && Objects.equals(existing.getAccountId(), accountId) && Objects.equals(existing.getAmount(), amount);
-
-        if (!sameRequest) throw new IdempotencyConflictException(existing.getId());
     }
 
     @Override
