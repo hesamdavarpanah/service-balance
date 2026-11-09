@@ -27,14 +27,11 @@ public class TransferTransactionService {
 
     public Mono<TransferTransaction> createTransferTransaction(CreateTransferTransactionRequest request) {
         return Mono.defer(() -> {
-            if (request == null || request.getSourceAccountId() == null || request.getDestinationAccountId() == null || request.getTransactionMethod() == null || request.getAmount() == null || request.getAmount() <= 0) {
-
+            if (request == null || request.getSourceAccountId() == null || request.getDestinationAccountId() == null || request.getTransactionMethod() == null || request.getAmount() == null || request.getAmount() <= 0)
                 return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid transaction parameters; amount must be greater than 0"));
-            }
 
-            if (request.getSourceAccountId().equals(request.getDestinationAccountId())) {
+            if (request.getSourceAccountId().equals(request.getDestinationAccountId()))
                 return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source and destination accounts must be different"));
-            }
 
             return accountRepository.findById(request.getSourceAccountId()).switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "Source account not found"))).flatMap(sourceAccount -> {
                 if (request.getAmount() > sourceAccount.getBalance())
