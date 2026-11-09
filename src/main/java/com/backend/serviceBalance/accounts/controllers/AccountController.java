@@ -40,12 +40,7 @@ public class AccountController {
         return accountService.createAccount(request).thenReturn(ResponseEntity.status(HttpStatus.CREATED).body(GeneralResponse.builder().title("Success").explanation("User created successfully").build()));
     }
 
-    @Operation(summary = "Retrieve accounts", description = "Retrieve accounts", method = "GET", requestBody = @io.swagger.v3.oas.annotations.parameters.RequestBody(description = "Information required to create an account", required = true, content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = CreateOrUpdateAccountRequest.class))), responses = {@ApiResponse(responseCode = "201", description = "Account created successfully", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = GeneralResponse.class), examples = @ExampleObject(name = "AccountCreated", value = """
-            {
-              "title": "Success",
-              "explanation": "User created successfully"
-            }
-            """)))})
+    @Operation(summary = "Retrieve accounts", description = "Retrieve accounts", method = "GET", responses = {@ApiResponse(responseCode = "200", description = "Accounts retrieved successfully", content = @Content(mediaType = MediaType.APPLICATION_JSON_VALUE, schema = @Schema(implementation = AccountResponse.class)))})
     @GetMapping(value = "/retrieve-accounts/", produces = MediaType.APPLICATION_JSON_VALUE)
     public Flux<AccountResponse> retrieveAccounts() {
         return accountService.retrieveAccounts();

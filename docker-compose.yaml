@@ -10,33 +10,28 @@ services:
     ports:
       - "${APP_PORT:-8080}:8080"
 
+    env_file:
+      - .env
+
     environment:
-      SERVER_PORT: "8080"
+      APPLICATION_HOST: "0.0.0.0"
+      APPLICATION_PORT: "8080"
       DATABASE_HOST: postgres
       DATABASE_PORT: "5432"
-      DATABASE_NAME: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
-      DATABASE_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
-      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DATABASE_NAME}
-      SPRING_DATASOURCE_USERNAME: ${DATABASE_USER}
-      SPRING_DATASOURCE_PASSWORD: ${DATABASE_PASSWORD}
-      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/${DATABASE_NAME}
-      SPRING_R2DBC_USERNAME: ${DATABASE_USER}
-      SPRING_R2DBC_PASSWORD: ${DATABASE_PASSWORD}
 
     depends_on:
       postgres:
         condition: service_healthy
 
   postgres:
-    image: postgres:18
+    image: postgres:latest
     container_name: service-balance
     restart: unless-stopped
 
     environment:
-      POSTGRES_DB: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
-      POSTGRES_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+      POSTGRES_DB: "${DATABASE_NAME:?DATABASE_NAME is required}"
+      POSTGRES_USER: "${DATABASE_USER:?DATABASE_USER is required}"
+      POSTGRES_PASSWORD: "${DATABASE_PASSWORD:?DATABASE_PASSWORD is required}"
 
     ports:
       - "127.0.0.1:${DATABASE_EXTERNAL_PORT:-5432}:5432"
