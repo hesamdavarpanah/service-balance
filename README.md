@@ -184,11 +184,21 @@ Before starting the application:
 2. Set the API prefix using `base-url`.
 3. Configure the server port if needed.
 
-Example API and server configuration:
+Example API and server configuration for .env file (.env file like below is required):
 
 ```properties
-base-url=/api
-server.port=8080
+APPLICATION_HOST=127.0.0.1
+APPLICATION_PORT=8000
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_NAME=YOUR_DATABASE_DB
+DATABASE_USER=YOUR_DATABASE_USERNAME
+DATABASE_PASSWORD='YOUR_DATABASE_PASSWORD'
+BASE_URL=/api
+APPLICATION_VERSION=0.0.1-SNAPSHOT
+APPLICATION_NAME='Service Balance'
+MAX_RETRY=2
+MAX_DURATION_TIMEOUT=3
 ```
 
 Database settings depend on the persistence technology configured in the project.
