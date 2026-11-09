@@ -27,10 +27,8 @@ public class TransactionService {
 
     public Mono<Transaction> createTransaction(CreateTransactionRequest request) {
         return Mono.defer(() -> {
-            if (request == null || request.getAccountId() == null || request.getTransactionMethod() == null || request.getAmount() == null || request.getAmount() <= 0) {
-
+            if (request == null || request.getAccountId() == null || request.getTransactionMethod() == null || request.getAmount() == null || request.getAmount() <= 0)
                 return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid transaction parameters, amount must be greater than 0"));
-            }
 
             return accountRepository.findById(request.getAccountId()).switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "account not found"))).flatMap(account -> {
                 LocalDateTime now = LocalDateTime.now();
@@ -44,19 +42,5 @@ public class TransactionService {
 
     public Flux<TransactionResponse> retrieveTransactions() {
         return transactionRepository.findAll().map(transaction -> new TransactionResponse(transaction.getId(), transaction.getCreatedAt(), transaction.getUpdatedAt(), transaction.getTransactionMethod(), transaction.getAmount(), transaction.getAccountId(), transaction.getTransactionStatus()));
-    }
-
-    public Mono<Void> updateTransactionStatus(String transactionId, TransactionStatus status) {
-        return Mono.defer(() -> {
-            if (transactionId == null || status == null)
-                return Mono.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "invalid transaction id or status"));
-
-            return transactionRepository.updateTransactionStatus(transactionId, status).flatMap(updatedRows -> {
-                if (updatedRows == 0)
-                    return Mono.error(new ResponseStatusException(HttpStatus.NOT_FOUND, "transaction not found"));
-
-                return Mono.empty();
-            });
-        });
     }
 }
