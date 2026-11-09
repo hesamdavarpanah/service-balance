@@ -8,9 +8,11 @@ import com.backend.serviceBalance.balances.exceptions.TransactionAlreadyComplete
 import com.backend.serviceBalance.balances.validators.BalanceValidator;
 import com.backend.serviceBalance.configs.CreditRetryPolicy;
 import com.backend.serviceBalance.transactions.models.Transaction;
+import com.backend.serviceBalance.transactions.models.TransferTransaction;
 import com.backend.serviceBalance.transactions.models.enums.TransactionMethod;
 import com.backend.serviceBalance.transactions.models.enums.TransactionStatus;
 import com.backend.serviceBalance.transactions.repositories.TransactionRepository;
+import com.backend.serviceBalance.transactions.repositories.TransferTransactionRepository;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.reactor.circuitbreaker.operator.CircuitBreakerOperator;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +25,7 @@ import reactor.util.retry.Retry;
 
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -34,6 +37,7 @@ public class BalanceServiceImpl implements BalanceService {
     private final TransactionalOperator transactionalOperator;
     private final BalanceValidator balanceValidator;
     private final CircuitBreaker creditCircuitBreaker;
+    private final TransferTransactionRepository transferTransactionRepository;
 
     @Value("${max-retry}")
     private Long maxRetry;
@@ -114,20 +118,10 @@ public class BalanceServiceImpl implements BalanceService {
     @Override
     public Mono<Void> debit(String accountId, Long amount, String transactionId) {
         return Mono.defer(() -> {
-            validateDebit(accountId, amount, transactionId);
+            balanceValidator.validateDebit(accountId, amount, transactionId);
 
             return Mono.defer(() -> debitOnce(accountId, amount, transactionId)).timeout(Duration.ofSeconds(maxDurationTimeout)).retryWhen(Retry.backoff(maxRetry, Duration.ofMillis(200)).maxBackoff(Duration.ofSeconds(2)).jitter(0.5).filter(error -> !(error instanceof IdempotencyConflictException) && !(error instanceof TransactionAlreadyCompletedException) && !(error instanceof InsufficientBalanceException) && CreditRetryPolicy.isRetryable(error)).onRetryExhaustedThrow((_, signal) -> signal.failure())).transformDeferred(CircuitBreakerOperator.of(creditCircuitBreaker));
         });
-    }
-
-    private void validateDebit(String accountId, Long amount, String transactionId) {
-
-        if (accountId == null || accountId.isBlank()) throw new IllegalArgumentException("Account ID is required");
-
-        if (transactionId == null || transactionId.isBlank())
-            throw new IllegalArgumentException("Transaction ID is required");
-
-        if (amount == null || amount <= 0) throw new IllegalArgumentException("Amount must be greater than zero");
     }
 
     private Mono<Void> debitOnce(String accountId, Long amount, String transactionId) {
@@ -180,7 +174,99 @@ public class BalanceServiceImpl implements BalanceService {
 
     @Override
     public Mono<Void> transfer(String sourceAccountId, String destinationAccountId, Long amount, String transactionId) {
-        return Mono.error(new UnsupportedOperationException("Transfer is not implemented yet"));
+        return Mono.defer(() -> {
+            balanceValidator.validateTransfer(sourceAccountId, destinationAccountId, amount, transactionId);
+
+            return Mono.defer(() -> transferOnce(sourceAccountId, destinationAccountId, amount, transactionId)).timeout(Duration.ofSeconds(maxDurationTimeout)).retryWhen(Retry.backoff(maxRetry, Duration.ofMillis(200)).maxBackoff(Duration.ofSeconds(2)).jitter(0.5).filter(error -> !(error instanceof IdempotencyConflictException) && !(error instanceof TransactionAlreadyCompletedException) && !(error instanceof InsufficientBalanceException) && !(error instanceof IllegalArgumentException) && CreditRetryPolicy.isRetryable(error)).onRetryExhaustedThrow((_, signal) -> signal.failure())).transformDeferred(CircuitBreakerOperator.of(creditCircuitBreaker));
+        });
+    }
+
+    private Mono<Void> transferOnce(String sourceAccountId, String destinationAccountId, Long amount, String transactionId) {
+        return Mono.defer(() -> {
+            boolean sourceFirst = sourceAccountId.compareTo(destinationAccountId) < 0;
+
+            String firstId = sourceFirst ? sourceAccountId : destinationAccountId;
+
+            String secondId = sourceFirst ? destinationAccountId : sourceAccountId;
+
+            Mono<Void> work = lockTransferAccount(firstId, sourceAccountId).flatMap(first -> lockTransferAccount(secondId, sourceAccountId).flatMap(second -> {
+                Account source = sourceFirst ? first : second;
+
+                Account destination = sourceFirst ? second : first;
+
+                return transferTransactionRepository.findByIdForUpdate(transactionId).switchIfEmpty(Mono.defer(() -> createPendingTransfer(sourceAccountId, destinationAccountId, amount, transactionId))).flatMap(transaction -> processTransferTransaction(source, destination, transaction, sourceAccountId, destinationAccountId, amount, transactionId));
+            })).then();
+
+            return transactionalOperator.transactional(work);
+        });
+    }
+
+    private Mono<Account> lockTransferAccount(String accountId, String sourceAccountId) {
+        String role = accountId.equals(sourceAccountId) ? "Source" : "Destination";
+
+        return accountRepository.findByIdForUpdate(accountId).switchIfEmpty(Mono.error(new IllegalArgumentException(role + " account not found: " + accountId)));
+    }
+
+    private Mono<TransferTransaction> createPendingTransfer(String sourceAccountId, String destinationAccountId, Long amount, String transactionId) {
+        LocalDateTime now = LocalDateTime.now();
+
+        TransferTransaction transaction = TransferTransaction.builder().id(transactionId).sourceAccountId(sourceAccountId).destinationAccountId(destinationAccountId).amount(amount).transactionStatus(TransactionStatus.PENDING).createdAt(now).updatedAt(now).build();
+
+        return entityTemplate.insert(transaction);
+    }
+
+    private Mono<Void> processTransferTransaction(Account source, Account destination, TransferTransaction transaction, String sourceAccountId, String destinationAccountId, Long amount, String transactionId) {
+        boolean sameOperation = Objects.equals(transaction.getSourceAccountId(), sourceAccountId) && Objects.equals(transaction.getDestinationAccountId(), destinationAccountId) && Objects.equals(transaction.getAmount(), amount);
+
+        if (!sameOperation) return Mono.error(new IdempotencyConflictException(transactionId));
+
+        TransactionStatus status = transaction.getTransactionStatus();
+
+        if (status == TransactionStatus.SUCCESS)
+            return Mono.error(new TransactionAlreadyCompletedException(transactionId));
+
+        if (status != TransactionStatus.PENDING)
+            return Mono.error(new IllegalStateException("Transaction cannot be transferred in status " + status + ": " + transactionId));
+
+        return completeTransfer(source, destination, transaction);
+    }
+
+    private Mono<Void> completeTransfer(Account source, Account destination, TransferTransaction transaction) {
+        return Mono.defer(() -> {
+            Long sourceBalance = source.getBalance();
+            Long destinationBalance = destination.getBalance();
+            Long amount = transaction.getAmount();
+
+            if (sourceBalance == null || sourceBalance < 0)
+                return Mono.error(new IllegalStateException("Source account balance is invalid"));
+
+            if (destinationBalance == null || destinationBalance < 0)
+                return Mono.error(new IllegalStateException("Destination account balance is invalid"));
+
+            if (amount == null || amount <= 0)
+                return Mono.error(new IllegalArgumentException("Amount must be greater than zero"));
+
+            if (amount > sourceBalance)
+                return Mono.error(new InsufficientBalanceException(source.getId(), sourceBalance, amount));
+
+            final long newDestinationBalance;
+
+            try {
+                newDestinationBalance = Math.addExact(destinationBalance, amount);
+            } catch (ArithmeticException exception) {
+                return Mono.error(new IllegalArgumentException("Destination balance exceeds the supported range", exception));
+            }
+
+            source.setBalance(sourceBalance - amount);
+            destination.setBalance(newDestinationBalance);
+
+            return accountRepository.save(source).then(accountRepository.save(destination)).then(Mono.defer(() -> transferTransactionRepository.updateTransferTransactionStatus(transaction.getId(), TransactionStatus.SUCCESS))).flatMap(updatedRows -> {
+                if (updatedRows != 1)
+                    return Mono.error(new IllegalStateException("Expected to update one transfer transaction, " + "but updated " + updatedRows + ": " + transaction.getId()));
+
+                return Mono.empty();
+            });
+        });
     }
 
     @Override

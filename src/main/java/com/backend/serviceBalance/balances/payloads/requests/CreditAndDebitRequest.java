@@ -13,7 +13,7 @@ public class CreditAndDebitRequest {
     @Schema(description = "account ID", example = "ACC-01")
     private String accountId;
 
-    @Schema(description = "charge account balance amount", example = "1000000")
+    @Schema(description = "charge or decrease account balance amount", example = "1000000")
     private Long amount;
 
     @Schema(description = "transaction ID", example = "TX-01")
