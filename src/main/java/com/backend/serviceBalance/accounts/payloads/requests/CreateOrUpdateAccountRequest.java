@@ -3,13 +3,13 @@ package com.backend.serviceBalance.accounts.payloads.requests;
 import com.backend.serviceBalance.accounts.models.enums.AccountRole;
 import com.backend.serviceBalance.accounts.models.enums.AccountStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.Setter;
+import lombok.*;
 
 @Builder
 @Getter
 @Setter
+@NoArgsConstructor
+@AllArgsConstructor
 public class CreateOrUpdateAccountRequest {
 
     @Schema(example = "Hesam", description = "user firstname")
