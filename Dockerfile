@@ -1,5 +1,6 @@
-LABEL authors="hesamdavarpanah"
 FROM eclipse-temurin:27-jdk AS build
+
+LABEL authors="hesamdavarpanah"
 
 WORKDIR /workspace
 
