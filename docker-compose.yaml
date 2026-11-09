@@ -1,21 +1,59 @@
 services:
-  postgres:
-    image: postgres:latest
-    container_name: service-balance
-    environment:
-      POSTGRES_DB: ${DATABASE_NAME}
-      POSTGRES_USER: ${DATABASE_USER}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: service-balance-app:local
+    container_name: service-balance-app
+    restart: unless-stopped
+
     ports:
-      - "5432:5432"
+      - "${APP_PORT:-8080}:8080"
+
+    environment:
+      SERVER_PORT: "8080"
+
+      DATABASE_HOST: postgres
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
+      DATABASE_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DATABASE_NAME}
+      SPRING_DATASOURCE_USERNAME: ${DATABASE_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DATABASE_PASSWORD}
+
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres:5432/${DATABASE_NAME}
+      SPRING_R2DBC_USERNAME: ${DATABASE_USER}
+      SPRING_R2DBC_PASSWORD: ${DATABASE_PASSWORD}
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:18
+    container_name: service-balance
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME:?Set DATABASE_NAME in .env}
+      POSTGRES_USER: ${DATABASE_USER:?Set DATABASE_USER in .env}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?Set DATABASE_PASSWORD in .env}
+
+    ports:
+      - "127.0.0.1:${DATABASE_EXTERNAL_PORT:-5432}:5432"
+
     volumes:
       - postgres_data:/var/lib/postgresql
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      test: 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"'
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 10s
 
 volumes:
   postgres_data:
