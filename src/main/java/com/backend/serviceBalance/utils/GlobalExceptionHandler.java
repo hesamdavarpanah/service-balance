@@ -2,6 +2,7 @@ package com.backend.serviceBalance.utils;
 
 import com.backend.serviceBalance.accounts.exceptions.AccountAlreadyExistsException;
 import com.backend.serviceBalance.balances.exceptions.IdempotencyConflictException;
+import com.backend.serviceBalance.balances.exceptions.InsufficientBalanceException;
 import com.backend.serviceBalance.balances.exceptions.TransactionAlreadyCompletedException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,5 +57,10 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TransactionAlreadyCompletedException.class)
     public ResponseEntity<GeneralResponse> handleTransactionAlreadyCompleted(TransactionAlreadyCompletedException exception) {
         return buildResponse(HttpStatus.CONFLICT, "Transaction Already Completed", exception.getMessage());
+    }
+
+    @ExceptionHandler(InsufficientBalanceException.class)
+    public ResponseEntity<GeneralResponse> handleInsufficientBalance(InsufficientBalanceException exception) {
+        return buildResponse(HttpStatus.UNPROCESSABLE_CONTENT, "Insufficient Balance", exception.getMessage());
     }
 }
